@@ -33,12 +33,13 @@ There are better ways to do this installation, but this should work for now.
 
 ## Running CaImAn Wrapper
 Running caiman_wrapper will crop and spatially downsample (2x) your videos first and save those new videos to a user-defined directory. 
-There are flags that allow you to skip these steps if you wish. Make sure your video files are labeled with leading 0s (e.g., 
-movie-000.tif, movie-001.tif) for them to be sorted correctly (i.e., movie-10.tif will be sorted before movie-2.tif, which is not good). 
-This module was originally written for analyzing Inscopix recordings, which omit the numeric tag on its first tif file, so there is a tag
-(default True) to move that file to the front. Set is_inscopix=False to not do this.  
+There are flags that allow you to skip these steps if you wish, just copy your files to destination_dir (see below). Make sure 
+your video files are labeled with leading 0s (e.g., movie-000.tif, movie-001.tif) for them to be sorted correctly (i.e., 
+movie-10.tif will be sorted before movie-2.tif, which is not good). This module was originally written for analyzing Inscopix 
+recordings, which omit the numeric tag on its first tif file, so there is a tag (default True) to move that file to the front. 
+Set is_inscopix=False to not do this.  
 
-For default use: 
+Initialize the Python object: 
 ```
 import caiman_wrapper as cw
 raw_file_dir = 'directory//where//your//raw//files//are'
@@ -46,4 +47,31 @@ destination_dir = 'directory//where//you//want//your//analyses//to//go'
 session = cw.CaimanWrapper(raw_file_dir, destination_dir)
 ```
 
-Analyses run in two phases. The first phase 
+Analyses run in two phases. The first phase performs motion correction and loads the data. It also allows you to inspect a 
+local correlation image. To run phase 1, simply do:
+```
+session.run_phase1()
+```
+
+This will give you a local correlation image and peak signal to noise image. Find values that produce good-looking neurons and 
+captures all your data. Then run phase 2, which will allow you to set new min_corr and min_pnr parameters then runs CNMF-E and
+eliminates bad neurons with an evaluation using quality metrics:
+```
+session.run_phase2()
+```
+
+Inspect the outputs with:
+```
+session.plot_cells()
+session.inspect_cells()
+```
+
+To save: 
+```
+session.save()
+```
+
+Then terminate the multiprocessing pool:
+```
+session.terminate()
+```
