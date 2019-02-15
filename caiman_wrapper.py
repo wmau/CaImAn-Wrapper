@@ -62,12 +62,12 @@ class CaimanWrapper:
                 self.fnames.insert(0, self.fnames.pop())
     
     #%%
-    def run_phase1(self, skip_inspection=False):
+    def run_phase1(self, skip_inspection=False, **kwargs):
         """
         Sets parameters, runs motion correction, and displays summary images
         """
         # Set parameters. 
-        self.opts = self.init_mc_params()
+        self.opts = self.init_mc_params(**kwargs)
         
         # Set up cluster.
         self.c, self.dview, self.n_processes = self.setup_cluster()
@@ -174,91 +174,68 @@ class CaimanWrapper:
         return fnames, crop_coords
     
     #%%
-    def init_mc_params(self,
-                       motion_correct=True,
-                       pw_rigid=False,
-                       gSig_filter = (3,3),
-                       max_shifts = (5,5),
-                       strides = (48,48),
-                       overlaps = (24,24),
-                       max_deviation_rigid = 3,
-                       border_nan = 'copy',
-                       frame_rate = 20,
-                       decay_time = .4,
-                       ):
+    def init_mc_params(self, **kwargs):
         """
         Define parameters
         """
-        #Build the dict. 
+        #Build the dict. These are defaults. 
         params_dict = {
                 'fnames': self.fnames,      # file names
-                'fr': frame_rate,           
-                'decay_time': decay_time,   # transient decay time
-                'pw_rigid': pw_rigid,       # flag for performing piecewise-rigid motion correction (otherwise just rigid)
-                'max_shifts': max_shifts,   # maximum allowed rigid shift
-                'gSig_filt': gSig_filter,   # size of high pass spatial filtering, used in 1p data
-                'strides': strides,         # start a new patch for pw-rigid motion correction every x pixels
-                'overlaps': overlaps,       # overlap between pathes (size of patch strides+overlaps)
-                'max_deviation_rigid': max_deviation_rigid, # maximum deviation allowed for patch with respect to rigid shifts
-                'border_nan': border_nan,   # replicate values along the boundaries
+                'fr': 20,               # frame rate
+                'decay_time': .4,       # transient decay time
+                'pw_rigid': False,      # flag for performing piecewise-rigid motion correction (otherwise just rigid)
+                'max_shifts': (5,5),    # maximum allowed rigid shift
+                'gSig_filt': (3,3),     # size of high pass spatial filtering, used in 1p data
+                'strides': (48,48),     # start a new patch for pw-rigid motion correction every x pixels
+                'overlaps': (24,24),    # overlap between pathes (size of patch strides+overlaps)
+                'max_deviation_rigid': 3, # maximum deviation allowed for patch with respect to rigid shifts
+                'border_nan': 'copy',   # replicate values along the boundaries
                 }
+        
+        # If any parameters were modified from default.
+        for key, value in kwargs.items():
+            params_dict[key] = value
         
         opts = params.CNMFParams(params_dict = params_dict)
         
         return opts
     
     #%%
-    def init_cnm_params(self,
-                        p = 1,               # order of the autoregressive system
-                        K = None,           # upper bound on number of components per patch, in general None
-                        gSig = (3, 3),       # gaussian width of a 2D gaussian kernel, which approximates a neuron
-                        gSiz = None,         # average diameter of a neuron, in general 4*gSig+1
-                        Ain = None,          # possibility to seed with predetermined binary masks
-                        merge_thresh = .7,   # merging threshold, max correlation allowed
-                        rf = 40,             # half-size of the patches in pixels. e.g., if rf=40, patches are 80x80
-                        stride_cnmf = None,  # amount of overlap between the patches in pixels
-                        #                     (keep it at least large as gSiz, i.e 4 times the neuron size gSig)
-                        tsub = 2,            # downsampling factor in time for initialization
-                        ssub = 1,            # downsampling factor in space for initialization
-                        low_rank_background = None,  # None leaves background of each patch intact,
-                        #                     True performs global low-rank approximation if gnb>0
-                        gnb = 0,             # number of background components (rank) if positive
-                        nb_patch = 0,        # number of background components (rank) per patch if gnb>0,
-                        #                     else it is set automatically
-                        min_corr = .8,       # min peak value from correlation image
-                        min_pnr = 15,        # min peak to noise ration from PNR image
-                        ssub_B = 2,          # additional downsampling factor in space for background
-                        ring_size_factor = 1.4  # radius of ring is gSiz*ring_size_factor
-                        ):
+    def init_cnm_params(self,**kwargs):
         
-        gSiz = (4*gSig[0]+1, 4*gSig[0]+1) if gSiz is None else gSiz
-        stride_cnmf = 4*gSig[0] if stride_cnmf is None else stride_cnmf
-        
-        self.opts.change_params(params_dict={
+        params_dict={
                 'method_init': 'corr_pnr',
-                'K': K,
-                'gSig': gSig,
-                'gSize': gSiz,
-                'merge_thresh': merge_thresh,
-                'p': p,
-                'tsub': tsub,
-                'ssub': ssub,
-                'rf': rf,
-                'stride': stride_cnmf,
-                'only_init': True,
-                'nb': gnb, 
-                'nb_patch': nb_patch,
+                'K': None,          # upper bound on number of components per patch, in general None
+                'gSig': (3,3),      # gaussian width of a 2D gaussian kernel, which approximates a neuron
+                'gSize': (13,13),   # average diameter of a neuron, in general 4*gSig+1
+                'merge_thresh': .7, # merging threshold, max correlation allowed
+                'p': 1,             # order of the autoregressive system
+                'tsub': 2,          # downsampling factor in time for initialization
+                'ssub': 1,          # downsampling factor in space for initialization
+                'rf': 40,           # half-size of the patches in pixels. e.g., if rf=40, patches are 80x80 
+                'stride': 12,       # amount of overlap between the patches in pixels
+                #                     (keep it at least large as gSiz, i.e 4 times the neuron size gSig)
+                'only_init': True,  
+                'nb': 0,            # number of background components (rank) if positive
+                'nb_patch': 0,      # number of background components (rank) per patch if gnb>0,
+                                    # else it is set automatically
                 'method_deconvolution': 'oasis',
-                'low_rank_background': low_rank_background,
+                'low_rank_background': None,    # None leaves background of each patch intact,
+                                                # True performs global low-rank approximation if gnb>0
                 'update_background_components': True,
-                'min_corr': min_corr,
-                'min_pnr': min_pnr,
+                'min_corr': .8,     # min peak value from correlation image
+                'min_pnr': 15,      # min peak to noise ration from PNR image
                 'normalize_init': False,
                 'center_psf': True,
-                'ssub_B': ssub_B,
-                'ring_size_factor': ring_size_factor,
+                'ssub_B': 2,        # additional downsampling factor in space for background
+                'ring_size_factor': 1.4,    # radius of ring is gSiz*ring_size_factor
                 'del_duplicates': True,
-                'border_pix': self.bord_px})
+                'border_pix': self.bord_px}
+        
+        for key, value in kwargs.items():
+            params_dict[key] = value
+        
+        self.opts.change_params(params_dict)
     
     #%% 
     def change_params(self, **kwargs):
