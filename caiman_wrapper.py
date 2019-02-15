@@ -9,12 +9,14 @@ from caiman.motion_correction import MotionCorrect, tile_and_correct, motion_cor
 from caiman.source_extraction.cnmf import params
 from caiman.source_extraction import cnmf
 from caiman.utils.visualization import inspect_correlation_pnr
+from caiman.base.rois import register_multisession, extract_active_components
 import cv2
 import numpy as np
 import os
 import tifffile as TIF
 import matplotlib.pyplot as plt
 import pickle
+from scipy.sparse import csc_matrix
 
 class CaimanWrapper:
     """
@@ -41,16 +43,23 @@ class CaimanWrapper:
         except:
             pass
         
+        self.get_std_map()
+        plt.pause(5)        # Necessary because IDEs are dumb.
+        
         # Crop and spatially downsample files.
         if not self.skip_file_transfer:
-            self.get_std_map()
-            plt.pause(5)        # Necessary because IDEs are dumb.
-            self.fnames = self.crop_and_downsample()
+            self.fnames, self.crop_coords = self.crop_and_downsample()
         else:
             self.fnames = [os.path.join(self.destination, f) 
                            for f in os.listdir(self.destination) 
                            if f.endswith('.tif')]
-            self.fnames.insert(0, self.fnames.pop())
+            self.crop_coords = (0, 
+                                self.std_map.shape[1], 
+                                0,
+                                self.std_map.shape[0])
+            
+            if self.is_inscopix:
+                self.fnames.insert(0, self.fnames.pop())
     
     #%%
     def run_phase1(self, skip_inspection=False):
@@ -136,6 +145,8 @@ class CaimanWrapper:
             y1 = self.std_map.shape[1]
             x0 = 0
             x1 = self.std_map.shape[0]
+            
+        crop_coords = (y0, y1, x0, x1)
         
         print('Cropping...this may take a while.')
         # crop each file and save to destination.
@@ -160,7 +171,7 @@ class CaimanWrapper:
         if self.is_inscopix:
             fnames.insert(0, fnames.pop())
             
-        return fnames
+        return fnames, crop_coords
     
     #%%
     def init_mc_params(self,
@@ -317,7 +328,7 @@ class CaimanWrapper:
         not explicitly mentioned how to optimize these parameters, but I 
         believe you should be adjusting them until you see only neuron outlines.
         """
-        self.cn_filter, pnr = cm.summary_images.correlation_pnr(self.images, 
+        self.cn_filter, pnr = cm.summary_images.correlation_pnr(self.images[::2], 
                                                                 gSig=self.opts.init['gSig'][0],
                                                                 swap_dim=False)
         inspect_correlation_pnr(self.cn_filter, pnr)
@@ -373,6 +384,7 @@ class CaimanWrapper:
         save_obj = {
                 'files': self.fnames,
                 'processed_file': self.fname_new,
+                'crop_coords': self.crop_coords,
                 'data': self.cnm.estimates,
                 'cn_filter': self.cn_filter,
                 'std_map': self.std_map,
@@ -384,3 +396,31 @@ class CaimanWrapper:
     #%% 
     def terminate(self):
         cm.stop_server(dview=self.dview)
+        
+
+class Registration:
+    def __init__(self, paths):
+        # Make a list of caiman_wrapper objects by loading pickled files.
+        self.caiman_objs = []
+        for folder in paths:
+            with open(os.path.join(folder, 'caiman_outputs.pkl'), 'rb') as file:
+                session = pickle.load(file)
+            
+            self.caiman_objs.append(session)
+        
+        # Get the cell outlines and dimensions. 
+        A = [obj['data'].A for obj in self.caiman_objs]
+        self.A = [csc_matrix(A1/A1.sum(0)) for A1 in A]
+        dims = [obj['cn_filter'].shape for obj in self.caiman_objs]
+        if all(x == dims[0] for x in dims):
+            self.dims = dims[0]
+        else:
+            raise ValueError('Dimensions are not the same across sessions')
+        
+        # Do registration. 
+        self.A_union, self.assignments, self.matchings = self.register_sessions()
+        
+    def register_sessions(self):
+        A_union, assignments, matchings = register_multisession(self.A, self.dims)
+            
+        return A_union, assignments, matchings
