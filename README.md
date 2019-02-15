@@ -47,15 +47,18 @@ destination_dir = 'directory//where//you//want//your//analyses//to//go'
 session = cw.CaimanWrapper(raw_file_dir, destination_dir)
 ```
 
+This will prompt you to select coordinates for cropping. Cropping is done automatically and new cropped files are saved to 
+destination_dir. After this finishes, proceed to analysis.
+
 Analyses run in two phases. The first phase performs motion correction and loads the data. It also allows you to inspect a 
 local correlation image. To run phase 1, simply do:
 ```
 session.run_phase1()
 ```
 
-This will give you a local correlation image and peak signal to noise image. Find values that produce good-looking neurons and 
-captures all your data. Then run phase 2, which will allow you to set new min_corr and min_pnr parameters then runs CNMF-E and
-eliminates bad neurons with an evaluation using quality metrics:
+This will give you a local correlation image and peak signal to noise image. Use the scrollbars to find values that produce 
+good-looking neurons and captures all your data. Then run phase 2, which will allow you to set new min_corr and min_pnr 
+parameters then runs CNMF-E and eliminates bad neurons with an evaluation using quality metrics:
 ```
 session.run_phase2()
 ```
@@ -66,7 +69,7 @@ session.plot_cells()
 session.inspect_cells()
 ```
 
-To save: 
+To save results to disk: 
 ```
 session.save()
 ```
