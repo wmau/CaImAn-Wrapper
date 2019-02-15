@@ -1,6 +1,5 @@
-CaImAn-Wrapper
+# CaImAn-Wrapper
 
-==
 
 CaImAn Wrapper is a package that calls CaImAn functions from: https://github.com/flatironinstitute/CaImAn. CaImAn Wrapper allows the user to execute
 their recommended pipeline for 1-photon miniscope data processing with motion correction and CNMF-E. 
