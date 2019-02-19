@@ -17,6 +17,16 @@ import tifffile as TIF
 import matplotlib.pyplot as plt
 import pickle
 from scipy.sparse import csc_matrix
+import logging
+
+def load_results(directory):
+    """
+    If Caiman has already been run, load results.
+    """
+    with open(os.path.join(directory, 'caiman_outputs.pkl'), 'rb') as file:
+        data = pickle.load(file)
+        
+    return data
 
 class CaimanWrapper:
     """
@@ -89,18 +99,14 @@ class CaimanWrapper:
         self.init_cnm_params()
         if not skip_inspection:
             self.inspect_summary()
+            print('Inspect summary images to select new min_corr or min_pnr if applicable')
         
-        
-    def run_phase2(self):
+    def run_phase2(self, **kwargs):
         """
-        Enter new min_corr and min_pnr values, then run CNMF-E and eliminate 
-        bad neurons.
+        Run CNMF-E and eliminate bad neurons.
         """
-        min_corr = float(input('New min_corr value: '))
-        min_pnr = float(input('New min_pnr value: '))
-        
         # Change parameters based on plots. 
-        self.change_params(min_corr=min_corr, min_pnr=min_pnr)
+        self.change_params(**kwargs)
         
         # Run CNMF-E.
         self.fit_cnmfe()
@@ -124,6 +130,7 @@ class CaimanWrapper:
         self.std_map = np.std(tif[::2],0)
         plt.imshow(self.std_map)
         
+        
     #%%
     def crop_and_downsample(self):
         """
@@ -134,19 +141,36 @@ class CaimanWrapper:
                             for f in os.listdir(self.raw_dir) 
                             if (f.endswith('.tif') and f.startswith('recording'))]
         
-        if self.do_crop:
-            # Get coordinates to crop.
-            y0 = int(input('Crop from here (left x position): '))
-            y1 = int(input('Crop to here (right x position): '))
-            x0 = int(input('Crop from here (top y position): '))
-            x1 = int(input('Crop to here (bottom y position): '))
-        else:
-            y0 = 0
-            y1 = self.std_map.shape[1]
-            x0 = 0
-            x1 = self.std_map.shape[0]
+        # First, check if past sessions saved a crop coordinate file. 
+        # It is important to have the same coordinates for each session so that
+        # registration works. 
+        base_dir = os.path.dirname(self.destination)
+        try:
+            with open(os.path.join(base_dir, 'crop_coords.pkl'), 'rb') as f:
+                crop_coords = pickle.load(f)
+                
+            print('Previous crop coordinates found.')
+            print('Cropping with ' + str(crop_coords))
+        except:
+            print('No previous crop coordinates located. Define new ones.')
             
-        crop_coords = (y0, y1, x0, x1)
+            if self.do_crop:
+                # Get coordinates to crop.
+                y0 = int(input('Crop from here (left x position): '))
+                y1 = int(input('Crop to here (right x position): '))
+                x0 = int(input('Crop from here (top y position): '))
+                x1 = int(input('Crop to here (bottom y position): '))
+            else:
+                y0 = 0
+                y1 = self.std_map.shape[1]
+                x0 = 0
+                x1 = self.std_map.shape[0]
+                
+            crop_coords = (y0, y1, x0, x1)
+            
+            # Save crop coordinates.
+            with open(os.path.join(base_dir, 'crop_coords.pkl'), 'wb') as f:
+                pickle.dump(crop_coords, f)
         
         print('Cropping...this may take a while.')
         # crop each file and save to destination.
@@ -208,7 +232,7 @@ class CaimanWrapper:
                 'K': None,          # upper bound on number of components per patch, in general None
                 'gSig': (3,3),      # gaussian width of a 2D gaussian kernel, which approximates a neuron
                 'gSize': (13,13),   # average diameter of a neuron, in general 4*gSig+1
-                'merge_thresh': .7, # merging threshold, max correlation allowed
+                'merge_thr': .4,    # merging threshold, max correlation allowed
                 'p': 1,             # order of the autoregressive system
                 'tsub': 2,          # downsampling factor in time for initialization
                 'ssub': 1,          # downsampling factor in space for initialization
@@ -375,6 +399,7 @@ class CaimanWrapper:
         cm.stop_server(dview=self.dview)
         
 
+#%%
 class Registration:
     def __init__(self, paths):
         # Make a list of caiman_wrapper objects by loading pickled files.
