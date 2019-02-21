@@ -22,7 +22,14 @@ from scipy.sparse import csc_matrix
 def load_results(directory):
     """
     If Caiman has already been run, load results.
+
+    Parameters
+    ---
+    directory: str
+        Path to folder containing caiman_outputs.pkl.
+
     """
+
     with open(os.path.join(directory, 'caiman_outputs.pkl'), 'rb') as file:
         data = pickle.load(file)
         
@@ -31,7 +38,32 @@ def load_results(directory):
 class CaimanWrapper:
     """
     CaimanWrapper is a class designed to operate around the CaImAn package, 
-    allowing fast and efficient utilization of the available tools. 
+    allowing fast and efficient utilization of the available tools.
+
+    Parameters
+    ---
+    raw_dir: str
+        Folder containing raw tif files.
+
+    destination: str
+        Folder where you want to copy cropped movies and caiman results.
+
+    spatial_downsample: int, default: 2
+        Factor to spatially downsample.
+
+    do_crop: boolean, default: True
+        Flag to crop movies.
+
+    is_inscopix: boolean, default: True
+        Flag whether to do Inscopix file-specific ordering changes.
+
+    do_motion_correct: boolean, default: True
+        Flag whether to perform motion correction.
+
+    skip_file_transfer: boolean, default: False
+        Flag whether to copy movie files to destination. Typically only used if movies are moved to destination
+        beforehand. Note that crop coordinates will not be properly assigned in this case.
+
     """
     def __init__(self, raw_dir, destination,
                  spatial_downsample=2,
@@ -75,6 +107,15 @@ class CaimanWrapper:
     def run_phase1(self, skip_inspection=False, **kwargs):
         """
         Sets parameters, runs motion correction, and displays summary images
+
+        Parameters
+        ---
+        skip_inspection: boolean, default: False
+            Skips inspect_summary() call. Not recommended, since this gives you the cn_filter image.
+
+        **kwargs: key, value pairings
+            Runs phase 1 with these parameters changed from default. See init_mc_params().
+
         """
         # Set parameters. 
         self.opts = self.init_mc_params(**kwargs)
@@ -104,6 +145,12 @@ class CaimanWrapper:
     def run_phase2(self, **kwargs):
         """
         Run CNMF-E and eliminate bad neurons.
+
+        Parameters
+        ---
+        **kwargs: key, value pairings
+            Runs phase 2 with these parameters changed from defaults. See init_cnm_params().
+
         """
         # Change parameters based on plots. 
         self.change_params(**kwargs)
@@ -169,6 +216,7 @@ class CaimanWrapper:
             crop_coords = (y0, y1, x0, x1)
             
             # Save crop coordinates.
+            print('Saving crop coordinates...')
             with open(os.path.join(base_dir, 'crop_coords.pkl'), 'wb') as f:
                 pickle.dump(crop_coords, f)
         
@@ -200,9 +248,10 @@ class CaimanWrapper:
     #%%
     def init_mc_params(self, **kwargs):
         """
-        Define parameters
+        Define parameters.
+
         """
-        #Build the dict. These are defaults. 
+        #Build the dict. These are defaults.
         params_dict = {
                 'fnames': self.fnames,      # file names
                 'fr': 20,               # frame rate
@@ -216,7 +265,7 @@ class CaimanWrapper:
                 'border_nan': 'copy',   # replicate values along the boundaries
                 }
         
-        # If any parameters were modified from default.
+        # If any parameters were modified from default, this line reflects those changes.
         for key, value in kwargs.items():
             params_dict[key] = value
         
@@ -226,19 +275,23 @@ class CaimanWrapper:
     
     #%%
     def init_cnm_params(self,**kwargs):
+        """
+        Initializes the CNMF parameters.
+
+        """
         
         params_dict={
                 'method_init': 'corr_pnr',
                 'K': None,          # upper bound on number of components per patch, in general None
                 'gSig': (3,3),      # gaussian width of a 2D gaussian kernel, which approximates a neuron
-                'gSiz': (13,13),   # average diameter of a neuron, in general 4*gSig+1
+                'gSiz': (13,13),    # average diameter of a neuron, in general 4*gSig+1
                 'merge_thr': .4,    # merging threshold, max correlation allowed
                 'p': 1,             # order of the autoregressive system
                 'tsub': 2,          # downsampling factor in time for initialization
                 'ssub': 1,          # downsampling factor in space for initialization
                 'rf': 40,           # half-size of the patches in pixels. e.g., if rf=40, patches are 80x80 
                 'stride': 12,       # amount of overlap between the patches in pixels
-                #                     (keep it at least large as gSiz, i.e 4 times the neuron size gSig)
+                                    # (keep it at least large as gSiz, i.e 4 times the neuron size gSig)
                 'only_init': True,  
                 'nb': 0,            # number of background components (rank) if positive
                 'nb_patch': 0,      # number of background components (rank) per patch if gnb>0,
@@ -264,7 +317,8 @@ class CaimanWrapper:
     #%% 
     def change_params(self, **kwargs):
         """
-        Change specified parameters.
+        Change specified parameters (e.g., session.change_params(merge_thr=0.3))
+
         """
         mod_params = {key: value for key, value in kwargs.items()}
         
@@ -274,7 +328,8 @@ class CaimanWrapper:
     #%%
     def setup_cluster(self):
         """
-        Set up the cluster for doing stuff fast. 
+        Set up the cluster for doing stuff fast.
+
         """
         if 'dview' in locals():
             cm.stop_server(dview=dview)
@@ -287,6 +342,7 @@ class CaimanWrapper:
     def motion_correct(self):
         """
         Do motion correction.
+
         """
         # Set up motion correction object and load parameters. 
         mc = MotionCorrect(self.fnames, 
@@ -317,7 +373,8 @@ class CaimanWrapper:
     #%%
     def load_memmap_file(self):
         """
-        Load the memory map file. 
+        Load the memory map file.
+
         """
         Yr, dims, T = cm.load_memmap(self.fname_new)
         self.images = Yr.T.reshape((T,) + dims, order = 'F')
@@ -328,6 +385,7 @@ class CaimanWrapper:
         Plot and inspect the local correlations and peak to noise ratio. It's 
         not explicitly mentioned how to optimize these parameters, but I 
         believe you should be adjusting them until you see only neuron outlines.
+
         """
         self.cn_filter, pnr = cm.summary_images.correlation_pnr(self.images[::2], 
                                                                 gSig=self.opts.init['gSig'][0],
@@ -338,6 +396,7 @@ class CaimanWrapper:
     def fit_cnmfe(self):
         """
         Do CNMF-E
+
         """
         self.cnm = cnmf.CNMF(n_processes=self.n_processes,
                              dview=self.dview,
@@ -348,7 +407,16 @@ class CaimanWrapper:
     #%%
     def eval_components(self, min_SNR=3, r_values_min=0.85):
         """
-        Evaluate the outputs of CNMF-E. Eliminate non-neuron-like shapes. 
+        Evaluate the outputs of CNMF-E. Eliminate non-neuron-like shapes.
+
+        Parameters
+        ---
+        min_SNR: float, default: 3
+            Minimum signal to noise ratio to be included in final component list.
+
+        r_values_min: float, default: 0.85
+            Minimum correlation to trace to be included in final component list.
+            
         """
         self.cnm.params.set('quality', {'min_SNR': min_SNR,
                                         'rval_thr': r_values_min,
@@ -363,7 +431,13 @@ class CaimanWrapper:
     #%%
     def plot_cells(self, display_numbers=False):
         """
-        Plot the background plus detected cells. 
+        Plot the background plus detected cells.
+
+        Parameters
+        ---
+        display_numbers: boolean, default: False
+            Flag for plotting the numbers on top of the cell masks.
+
         """
         self.cnm.estimates.plot_contours(img=self.cn_filter, 
                                          idx=self.cnm.estimates.idx_components,
@@ -371,6 +445,10 @@ class CaimanWrapper:
         
     #%% 
     def inspect_cells(self):
+        """
+        Inspect components on jupyter notebook.
+
+        """
         self.cnm.estimates.nb_view_components(img=self.cn_filter, 
                                               idx=self.cnm.estimates.idx_components, 
                                               denoised_color='red', cmap='gray')
@@ -378,11 +456,18 @@ class CaimanWrapper:
     #%%
     def save(self, save_name=None):
         """
-        Save stuff.
+        Save results.
+
+        Parameters
+        ---
+        save_name: str, default: 'DESTINATION_PATH/caiman_outputs.pkl'
+            FULL file name including the path where you want to save results.
+
         """
         save_name = os.path.join(self.destination, 
                                  'caiman_outputs.pkl') if save_name is None else save_name
-                                 
+
+        # Build dict.
         save_obj = {
                 'files': self.fnames,
                 'processed_file': self.fname_new,
@@ -392,17 +477,31 @@ class CaimanWrapper:
                 'std_map': self.std_map,
                 'opts': self.opts}
 
+        # Save.
         with open(save_name, 'wb') as f:
             pickle.dump(save_obj, f, protocol=pickle.HIGHEST_PROTOCOL)
             
     #%% 
     def terminate(self):
+        """
+        Stops multiprocessing pools.
+
+        """
         cm.stop_server(dview=self.dview)
         
 
 #%%
 class Registration:
     def __init__(self, paths):
+        """
+        Object for performing and inspecting across-day registration.
+
+        Parameters
+        ---
+        paths: str
+            Folders containing caiman_outputs.pkl files.
+
+        """
         # Make a list of caiman_wrapper objects by loading pickled files.
         self.caiman_objs = []
         for folder in paths:
@@ -411,19 +510,60 @@ class Registration:
             
             self.caiman_objs.append(session)
         
-        # Get the cell outlines and dimensions. 
+        # Get the cell outlines.
         A = [obj['data'].A for obj in self.caiman_objs]
         self.A = [csc_matrix(A1/A1.sum(0)) for A1 in A]
-        dims = [obj['cn_filter'].shape for obj in self.caiman_objs]
+
+        # Get registration templates.
+        self.templates = [obj['cn_filter'] for obj in self.caiman_objs]
+
+        # Get dimensions.
+        dims = [img.shape for img in self.templates]
         if all(x == dims[0] for x in dims):
             self.dims = dims[0]
         else:
             raise ValueError('Dimensions are not the same across sessions')
+
+        # Get cell masks.
+        self.masks = [np.reshape(A_.toarray(), self.dims + (-1,),
+                      order='F').transpose(2, 0, 1) for A_ in self.A]
         
         # Do registration. 
         self.A_union, self.assignments, self.matchings = self.register_sessions()
         
     def register_sessions(self):
-        A_union, assignments, matchings = register_multisession(self.A, self.dims)
+        """
+        Do registration.
+
+        """
+        A_union, assignments, matchings = register_multisession(self.A, self.dims, self.templates)
             
         return A_union, assignments, matchings
+
+    def plot_cells(self, sessions=None, only=False):
+        """
+        Plot cells across sessions.
+
+        Parameters
+        ---
+        sessions: list, default: None
+            Sessions to plot. If not specified, plots all sessions.
+
+        only: boolean, default: False
+            If True, plot cells that are active ONLY in these sessions and inactive in others. If False, components
+            can be active in other sessions as well.
+
+        """
+        sessions = list(range(len(self.caiman_objs))) if sessions is None else sessions
+
+        # Find activate components in the specified sessions.
+        active_components = extract_active_components(self.assignments, sessions, only=only)
+        sparsed_assignments = self.assignments[list(active_components)]
+        assignments_list = sparsed_assignments.astype(int).T.to_list()
+
+        # Plot contours of all cells.
+        plt.figure()
+        plt.imshow(self.templates[0], cmap='gray')
+        for session in sessions:
+            for mask in self.masks[session][assignments_list[session]]:
+                plt.contours(mask)
