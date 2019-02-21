@@ -17,7 +17,7 @@ import tifffile as TIF
 import matplotlib.pyplot as plt
 import pickle
 from scipy.sparse import csc_matrix
-import logging
+#import logging
 
 def load_results(directory):
     """
@@ -231,7 +231,7 @@ class CaimanWrapper:
                 'method_init': 'corr_pnr',
                 'K': None,          # upper bound on number of components per patch, in general None
                 'gSig': (3,3),      # gaussian width of a 2D gaussian kernel, which approximates a neuron
-                'gSize': (13,13),   # average diameter of a neuron, in general 4*gSig+1
+                'gSiz': (13,13),   # average diameter of a neuron, in general 4*gSig+1
                 'merge_thr': .4,    # merging threshold, max correlation allowed
                 'p': 1,             # order of the autoregressive system
                 'tsub': 2,          # downsampling factor in time for initialization
@@ -250,7 +250,7 @@ class CaimanWrapper:
                 'min_corr': .8,     # min peak value from correlation image
                 'min_pnr': 15,      # min peak to noise ration from PNR image
                 'normalize_init': False,
-                'center_psf': True,
+                'center_psf': True, # True for 1-photon imaging. 
                 'ssub_B': 2,        # additional downsampling factor in space for background
                 'ring_size_factor': 1.4,    # radius of ring is gSiz*ring_size_factor
                 'del_duplicates': True,
@@ -361,12 +361,13 @@ class CaimanWrapper:
         print('Number of accepted components: ', len(self.cnm.estimates.idx_components))
 
     #%%
-    def plot_cells(self):
+    def plot_cells(self, display_numbers=False):
         """
         Plot the background plus detected cells. 
         """
         self.cnm.estimates.plot_contours(img=self.cn_filter, 
-                                         idx=self.cnm.estimates.idx_components)
+                                         idx=self.cnm.estimates.idx_components,
+                                         display_numbers=display_numbers)
         
     #%% 
     def inspect_cells(self):
