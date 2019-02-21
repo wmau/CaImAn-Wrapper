@@ -529,14 +529,14 @@ class Registration:
                       order='F').transpose(2, 0, 1) for A_ in self.A]
         
         # Do registration. 
-        self.A_union, self.assignments, self.matchings = self.register_sessions()
+        #self.A_union, self.assignments, self.matchings = self.register_sessions()
         
     def register_sessions(self):
         """
         Do registration.
 
         """
-        A_union, assignments, matchings = register_multisession(self.A, self.dims, self.templates)
+        A_union, assignments, matchings = register_multisession(self.A, self.dims)
             
         return A_union, assignments, matchings
 
@@ -559,11 +559,11 @@ class Registration:
         # Find activate components in the specified sessions.
         active_components = extract_active_components(self.assignments, sessions, only=only)
         sparsed_assignments = self.assignments[list(active_components)]
-        assignments_list = sparsed_assignments.astype(int).T.to_list()
+        assignments_list = sparsed_assignments.astype(int).T.tolist()
 
         # Plot contours of all cells.
         plt.figure()
         plt.imshow(self.templates[0], cmap='gray')
         for session in sessions:
             for mask in self.masks[session][assignments_list[session]]:
-                plt.contours(mask)
+                plt.contour(mask)
