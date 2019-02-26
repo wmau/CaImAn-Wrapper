@@ -193,8 +193,7 @@ class CaimanWrapper:
         self.std_map = np.std(tif[::2],0)
         plt.imshow(self.std_map)
         
-        
-    #%%
+
     def crop_and_downsample(self):
         """
         Crop and spatially downsample the raw files before proceeding.
@@ -291,7 +290,7 @@ class CaimanWrapper:
         
         return opts
     
-    #%%
+
     def init_cnm_params(self,**kwargs):
         """
         Initializes the CNMF parameters.
@@ -331,8 +330,8 @@ class CaimanWrapper:
             params_dict[key] = value
         
         self.opts.change_params(params_dict)
-    
-    #%% 
+
+
     def change_params(self, **kwargs):
         """
         Change specified parameters (e.g., session.change_params(merge_thr=0.3))
@@ -543,18 +542,23 @@ class Registration:
             raise ValueError('Dimensions are not the same across sessions')
 
         # Get cell masks.
-        self.masks = [np.reshape(A_.toarray(), self.dims + (-1,),
-                      order='F').transpose(2, 0, 1) for A_ in self.A]
+        self.masks = self.sparse_mat_to_mask(self.A)
         
         # Do registration. 
         self.A_union, self.assignments, self.matchings = self.register_sessions()
+
+        # Get aligned cell masks
+        self.aligned_masks = []
+        self.aligned_masks.append(self.sparse_mat_to_mask([self.A[0]])[0]),
+        self.aligned_masks.extend(self.sparse_mat_to_mask(self.A2))
         
     def register_sessions(self):
         """
         Do registration.
 
         """
-        A_union, assignments, matchings = register_multisession(self.A, self.dims, templates=self.templates, use_opt_flow=False)
+        A_union, assignments, matchings = \
+            register_multisession(self.A, self.dims, templates=self.templates)
             
         return A_union, assignments, matchings
 
@@ -583,30 +587,47 @@ class Registration:
         plt.figure()
         plt.imshow(self.templates[0], cmap='gray')
         for session in sessions:
-            for mask in self.masks[session][assignments_list[session]]:
+            for mask in self.aligned_masks[session][assignments_list[session]]:
                 plt.contour(mask)
                 
-    def find_cell_contours(self, p_max_threshold=0.8):
+    def find_cell_contours(self, masks, p_max_threshold=0.8):
         """
         Convert cell masks into contours. 
         """
         
         # Initialize full list. 
-        self.contours = []
+        contours = []
         
         # For each session, start a new list. 
-        for session in self.masks:
+        for session in masks:
             cells_this_session = []
             
             # Append each cell's contours onto this second-tier list. 
             for n, cell in enumerate(session):
                 # Set a threshold for inclusion into contour region.
                 threshold = p_max_threshold * cell.max()
-                contours = measure.find_contours(cell, threshold)
+                cell_contour = measure.find_contours(cell, threshold)
                     
-                cells_this_session.append(contours)
+                cells_this_session.append(cell_contour)
                 
             # Append onto master list. 
-            self.contours.append(cells_this_session)
+            contours.append(cells_this_session)
+
+        return contours
+
+    def sparse_mat_to_mask(self, A):
+        mask = [np.reshape(A_.toarray(), self.dims + (-1,),
+                          order='F').transpose(2, 0, 1) for A_ in A]
+
+        return mask
             
-            
+
+if __name__ == '__main__':
+    s1 = 'L:\\CaImAn data folders\\BLA\\Mundilfari\\08_06_2018_Shock'
+    s2 = 'L:\\CaImAn data folders\\BLA\\Mundilfari\\08_07_2018_Ext1a_Ctx1'
+    s3 = 'L:\\CaImAn data folders\\BLA\\Mundilfari\\08_07_2018_Ext1b_Ctx2'
+    from caiman_wrapper import Registration
+
+    r = Registration([s1, s2, s3])
+
+    pass
