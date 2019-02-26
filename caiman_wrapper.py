@@ -17,7 +17,9 @@ import tifffile as TIF
 import matplotlib.pyplot as plt
 import pickle
 from scipy.sparse import csc_matrix
-#import logging
+import logging
+from skimage import measure
+
 
 def load_results(directory):
     """
@@ -95,13 +97,27 @@ class CaimanWrapper:
             self.fnames = [os.path.join(self.destination, f) 
                            for f in os.listdir(self.destination) 
                            if f.endswith('.tif')]
-            self.crop_coords = (0, 
-                                self.std_map.shape[1], 
-                                0,
-                                self.std_map.shape[0])
+            
+            if self.do_crop: 
+                self.crop_coords = (0, 
+                                    self.std_map.shape[1], 
+                                    0,
+                                    self.std_map.shape[0])
+            else:
+                base_dir = os.path.dirname(self.destination)
+                with open(os.path.join(base_dir, 'crop_coords.pkl'), 'rb') as f:
+                    self.crop_coords = pickle.load(f)
             
             if self.is_inscopix:
                 self.fnames.insert(0, self.fnames.pop())
+                
+    def quick_run(self):
+        """
+        Runs both motion correct and CNMF-E back to back with default settings.
+        """
+        
+        self.run_phase1()
+        self.run_phase2()
     
     #%%
     def run_phase1(self, skip_inspection=False, **kwargs):
@@ -131,7 +147,7 @@ class CaimanWrapper:
             print('Skipping motion correction, getting memory mapped file.')
             self.fname_new = [os.path.join(self.destination, f)
                               for f in os.listdir(self.destination)
-                              if (f.endswith('.mmap') and f.startswith('memmap__'))][0]
+                              if (f.endswith('.mmap') and f.startswith('full_'))][0]
             self.bord_px = 0
             
         # Load the memory mapped file and plot the summary images. 
@@ -195,6 +211,8 @@ class CaimanWrapper:
         try:
             with open(os.path.join(base_dir, 'crop_coords.pkl'), 'rb') as f:
                 crop_coords = pickle.load(f)
+                
+                y0, y1, x0, x1 = crop_coords
                 
             print('Previous crop coordinates found.')
             print('Cropping with ' + str(crop_coords))
@@ -367,7 +385,7 @@ class CaimanWrapper:
     
         # Save memory map. 
         self.bord_px = 0 if self.opts.motion['border_nan'] is 'copy' else self.bord_px
-        self.fname_new = cm.save_memmap(fname_mc, base_name='memmap_', order='C',
+        self.fname_new = cm.save_memmap(fname_mc, base_name='full', order='C',
                                         border_to_0=self.bord_px)
     
     #%%
@@ -529,14 +547,14 @@ class Registration:
                       order='F').transpose(2, 0, 1) for A_ in self.A]
         
         # Do registration. 
-        #self.A_union, self.assignments, self.matchings = self.register_sessions()
+        self.A_union, self.assignments, self.matchings = self.register_sessions()
         
     def register_sessions(self):
         """
         Do registration.
 
         """
-        A_union, assignments, matchings = register_multisession(self.A, self.dims)
+        A_union, assignments, matchings = register_multisession(self.A, self.dims, templates=self.templates, use_opt_flow=False)
             
         return A_union, assignments, matchings
 
@@ -567,3 +585,28 @@ class Registration:
         for session in sessions:
             for mask in self.masks[session][assignments_list[session]]:
                 plt.contour(mask)
+                
+    def find_cell_contours(self, p_max_threshold=0.8):
+        """
+        Convert cell masks into contours. 
+        """
+        
+        # Initialize full list. 
+        self.contours = []
+        
+        # For each session, start a new list. 
+        for session in self.masks:
+            cells_this_session = []
+            
+            # Append each cell's contours onto this second-tier list. 
+            for n, cell in enumerate(session):
+                # Set a threshold for inclusion into contour region.
+                threshold = p_max_threshold * cell.max()
+                contours = measure.find_contours(cell, threshold)
+                    
+                cells_this_session.append(contours)
+                
+            # Append onto master list. 
+            self.contours.append(cells_this_session)
+            
+            
