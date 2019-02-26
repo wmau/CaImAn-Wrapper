@@ -19,6 +19,8 @@ import pickle
 from scipy.sparse import csc_matrix
 import logging
 from skimage import measure
+import scipy.io as sio
+import matlab.engine
 
 
 def load_results(directory):
@@ -509,7 +511,7 @@ class CaimanWrapper:
 
 #%%
 class Registration:
-    def __init__(self, paths):
+    def __init__(self, mouse_path):
         """
         Object for performing and inspecting across-day registration.
 
@@ -520,13 +522,21 @@ class Registration:
 
         """
         # Make a list of caiman_wrapper objects by loading pickled files.
+        all_folders = [os.path.join(mouse_path, s) for s in os.listdir(mouse_path)]
+
+        self.caiman_paths = []
         self.caiman_objs = []
-        for folder in paths:
-            with open(os.path.join(folder, 'caiman_outputs.pkl'), 'rb') as file:
-                session = pickle.load(file)
-            
-            self.caiman_objs.append(session)
-        
+        for folder in all_folders:
+            try:
+                with open(os.path.join(folder, 'caiman_outputs.pkl'), 'rb') as file:
+                    session = pickle.load(file)
+
+                self.caiman_objs.append(session)
+                self.caiman_paths.append(folder)
+
+            except:
+                pass
+
         # Get the cell outlines.
         A = [obj['data'].A for obj in self.caiman_objs]
         self.A = [csc_matrix(A1/A1.sum(0)) for A1 in A]
@@ -543,91 +553,32 @@ class Registration:
 
         # Get cell masks.
         self.masks = self.sparse_mat_to_mask(self.A)
-        
-        # Do registration. 
-        self.A_union, self.assignments, self.matchings = self.register_sessions()
 
-        # Get aligned cell masks
-        self.aligned_masks = []
-        self.aligned_masks.append(self.sparse_mat_to_mask([self.A[0]])[0]),
-        self.aligned_masks.extend(self.sparse_mat_to_mask(self.A2))
-        
-    def register_sessions(self):
-        """
-        Do registration.
+        # Make a spatial footprints folder.
+        spatial_footprint_folder = os.path.join(mouse_path, 'Spatial Footprints')
+        try:
+            os.mkdir(spatial_footprint_folder)
+        except:
+            pass
 
-        """
-        A_union, assignments, matchings = \
-            register_multisession(self.A, self.dims, templates=self.templates)
-            
-        return A_union, assignments, matchings
+        # For each session, save a spatial_footprints file.
+        for mask_set, session in zip(self.masks, self.caiman_paths):
+            session_name = os.path.basename(session)
+            sio.savemat(os.path.join(spatial_footprint_folder,
+                                     'spatial_footprints_' + session_name),
+                        {'spatial_footprints': mask_set})
 
-    def plot_cells(self, sessions=None, only=False):
-        """
-        Plot cells across sessions.
-
-        Parameters
-        ---
-        sessions: list, default: None
-            Sessions to plot. If not specified, plots all sessions.
-
-        only: boolean, default: False
-            If True, plot cells that are active ONLY in these sessions and inactive in others. If False, components
-            can be active in other sessions as well.
-
-        """
-        sessions = list(range(len(self.caiman_objs))) if sessions is None else sessions
-
-        # Find activate components in the specified sessions.
-        active_components = extract_active_components(self.assignments, sessions, only=only)
-        sparsed_assignments = self.assignments[list(active_components)]
-        assignments_list = sparsed_assignments.astype(int).T.tolist()
-
-        # Plot contours of all cells.
-        plt.figure()
-        plt.imshow(self.templates[0], cmap='gray')
-        for session in sessions:
-            for mask in self.aligned_masks[session][assignments_list[session]]:
-                plt.contour(mask)
-                
-    def find_cell_contours(self, masks, p_max_threshold=0.8):
-        """
-        Convert cell masks into contours. 
-        """
-        
-        # Initialize full list. 
-        contours = []
-        
-        # For each session, start a new list. 
-        for session in masks:
-            cells_this_session = []
-            
-            # Append each cell's contours onto this second-tier list. 
-            for n, cell in enumerate(session):
-                # Set a threshold for inclusion into contour region.
-                threshold = p_max_threshold * cell.max()
-                cell_contour = measure.find_contours(cell, threshold)
-                    
-                cells_this_session.append(cell_contour)
-                
-            # Append onto master list. 
-            contours.append(cells_this_session)
-
-        return contours
 
     def sparse_mat_to_mask(self, A):
         mask = [np.reshape(A_.toarray(), self.dims + (-1,),
                           order='F').transpose(2, 0, 1) for A_ in A]
 
         return mask
-            
 
 if __name__ == '__main__':
-    s1 = 'L:\\CaImAn data folders\\BLA\\Mundilfari\\08_06_2018_Shock'
-    s2 = 'L:\\CaImAn data folders\\BLA\\Mundilfari\\08_07_2018_Ext1a_Ctx1'
-    s3 = 'L:\\CaImAn data folders\\BLA\\Mundilfari\\08_07_2018_Ext1b_Ctx2'
-    from caiman_wrapper import Registration
+    mouse = 'L:\\CaImAn data folders\\BLA\\Mundilfari\\'
 
-    r = Registration([s1, s2, s3])
+
+    r = Registration(mouse)
 
     pass
