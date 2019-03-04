@@ -74,7 +74,8 @@ class CaimanWrapper:
                  do_crop=True,
                  is_inscopix=True,
                  do_motion_correct=True,
-                 skip_file_transfer=False):
+                 skip_file_transfer=False,
+                 crop_coords=None):
         self.raw_dir = raw_dir
         self.destination = destination
         self.spatial_downsample = spatial_downsample
@@ -82,6 +83,7 @@ class CaimanWrapper:
         self.is_inscopix = is_inscopix
         self.do_motion_correct = do_motion_correct
         self.skip_file_transfer = skip_file_transfer
+        self.crop_coords = crop_coords
         
         # This is necessary for some reason.
         try:
@@ -101,10 +103,13 @@ class CaimanWrapper:
                            if f.endswith('.tif')]
             
             if self.do_crop: 
-                self.crop_coords = (0, 
-                                    self.std_map.shape[1], 
-                                    0,
-                                    self.std_map.shape[0])
+                if crop_coords is None:
+                    self.crop_coords = (0, 
+                                        self.std_map.shape[1], 
+                                        0,
+                                        self.std_map.shape[0]) 
+                else: 
+                    pass
             else:
                 base_dir = os.path.dirname(self.destination)
                 with open(os.path.join(base_dir, 'crop_coords.pkl'), 'rb') as f:
@@ -209,35 +214,40 @@ class CaimanWrapper:
         # It is important to have the same coordinates for each session so that
         # registration works. 
         base_dir = os.path.dirname(self.destination)
-        try:
-            with open(os.path.join(base_dir, 'crop_coords.pkl'), 'rb') as f:
-                crop_coords = pickle.load(f)
-                
-                y0, y1, x0, x1 = crop_coords
-                
-            print('Previous crop coordinates found.')
-            print('Cropping with ' + str(crop_coords))
-        except:
-            print('No previous crop coordinates located. Define new ones.')
-            
-            if self.do_crop:
-                # Get coordinates to crop.
-                y0 = int(input('Crop from here (left x position): '))
-                y1 = int(input('Crop to here (right x position): '))
-                x0 = int(input('Crop from here (top y position): '))
-                x1 = int(input('Crop to here (bottom y position): '))
-            else:
-                y0 = 0
-                y1 = self.std_map.shape[1]
-                x0 = 0
-                x1 = self.std_map.shape[0]
-                
+        if self.crop_coords is not None:
+            y0, y1, x0, x1 = self.crop_coords
             crop_coords = (y0, y1, x0, x1)
-            
-            # Save crop coordinates.
-            print('Saving crop coordinates...')
-            with open(os.path.join(base_dir, 'crop_coords.pkl'), 'wb') as f:
-                pickle.dump(crop_coords, f)
+        
+        else:
+            try:
+                with open(os.path.join(base_dir, 'crop_coords.pkl'), 'rb') as f:
+                    crop_coords = pickle.load(f)
+                    
+                    y0, y1, x0, x1 = crop_coords
+                    
+                print('Previous crop coordinates found.')
+                print('Cropping with ' + str(crop_coords))
+            except:
+                print('No previous crop coordinates located. Define new ones.')
+                
+                if self.do_crop:
+                    # Get coordinates to crop.
+                    y0 = int(input('Crop from here (left x position): '))
+                    y1 = int(input('Crop to here (right x position): '))
+                    x0 = int(input('Crop from here (top y position): '))
+                    x1 = int(input('Crop to here (bottom y position): '))
+                else:
+                    y0 = 0
+                    y1 = self.std_map.shape[1]
+                    x0 = 0
+                    x1 = self.std_map.shape[0]
+                    
+                crop_coords = (y0, y1, x0, x1)
+                
+                # Save crop coordinates.
+                print('Saving crop coordinates...')
+                with open(os.path.join(base_dir, 'crop_coords.pkl'), 'wb') as f:
+                    pickle.dump(crop_coords, f)
         
         print('Cropping...this may take a while.')
         # crop each file and save to destination.
@@ -576,7 +586,7 @@ class Registration:
         return mask
 
 if __name__ == '__main__':
-    mouse = 'L:\\CaImAn data folders\\BLA\\Mundilfari\\'
+    mouse = 'L:\\CaImAn data folders\\CA1\\Kerberos\\'
 
 
     r = Registration(mouse)
